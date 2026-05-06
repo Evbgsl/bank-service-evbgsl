@@ -6,6 +6,7 @@ import (
 	"github.com/evbgsl/bank-service-evbgsl/internal/config"
 	"github.com/evbgsl/bank-service-evbgsl/internal/db"
 	"github.com/evbgsl/bank-service-evbgsl/internal/handlers"
+	"github.com/evbgsl/bank-service-evbgsl/internal/middleware"
 	"github.com/evbgsl/bank-service-evbgsl/internal/repositories"
 	"github.com/evbgsl/bank-service-evbgsl/internal/services"
 
@@ -31,7 +32,7 @@ func main() {
 	log.Info("database connection established")
 
 	userRepository := repositories.NewUserRepository(database)
-	authService := services.NewAuthService(userRepository)
+	authService := services.NewAuthService(userRepository, cfg.JWTSecret)
 	authHandler := handlers.NewAuthHandler(authService)
 
 	router := mux.NewRouter()
@@ -56,6 +57,11 @@ func main() {
 	}).Methods(http.MethodGet)
 
 	router.HandleFunc("/register", authHandler.Register).Methods(http.MethodPost)
+	router.HandleFunc("/login", authHandler.Login).Methods(http.MethodPost)
+
+	authRouter := router.PathPrefix("/").Subrouter()
+	authRouter.Use(middleware.AuthMiddleware(cfg.JWTSecret))
+	authRouter.HandleFunc("/me", authHandler.Me).Methods(http.MethodGet)
 
 	serverAddr := ":" + cfg.AppPort
 

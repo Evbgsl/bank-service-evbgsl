@@ -80,3 +80,56 @@ curl.exe -X POST http://localhost:8080/register -H "Content-Type: application/js
   "message": "user with this email or username already exists"
 }
 ```
+
+---
+## Аутентификация
+
+### Login
+
+Endpoint:
+```http
+POST /login
+```
+
+Пример запроса PowerShell:
+```powershell
+curl.exe -X POST http://localhost:8080/login -H "Content-Type: application/json" -d '{\"email\":\"user1@example.com\",\"password\":\"user123\"}'
+```
+
+Пример ответа:
+```json
+{
+  "token": "eyJ...",
+  "tokenType": "Bearer",
+  "expiresInSeconds": 86400
+}
+```
+
+### Защищенный endpoint
+
+Endpoint:
+```http
+GET /me
+```
+
+Запрос без токена вернет ошибку:
+```json
+{
+  "message": "authorization header required"
+}
+```
+
+Пример запроса с токеном:
+```powershell
+$response = curl.exe -X POST http://localhost:8080/login -H "Content-Type: application/json" -d '{\"email\":\"user1@example.com\",\"password\":\"user123\"}' | ConvertFrom-Json
+$token = $response.token
+
+curl.exe http://localhost:8080/me -H "Authorization: Bearer $token"
+```
+
+Пример ответа:
+```json
+{
+  "userId": 1
+}
+```
