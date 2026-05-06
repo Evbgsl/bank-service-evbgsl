@@ -50,3 +50,33 @@ curl.exe http://localhost:8080/health/db
 
 ---
 
+## Регистрация пользователя
+
+Endpoint:
+```http
+POST /register
+```
+
+Пример запроса PowerShell:
+```powershell
+curl.exe -X POST http://localhost:8080/register -H "Content-Type: application/json" -d '{\"username\":\"user1\",\"email\":\"user1@example.com\",\"password\":\"user123\"}'
+```
+
+Пример успешного ответа:
+```json
+{
+  "id": 1,
+  "username": "user1",
+  "email": "user1@example.com",
+  "message": "user registered successfully"
+}
+```
+
+Повторная регистрация с тем же `email` или `username` возвращает ошибку `409 Conflict`.
+
+Пример ошибки:
+```json
+{
+  "message": "user with this email or username already exists"
+}
+```

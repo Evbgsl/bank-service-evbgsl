@@ -5,6 +5,9 @@ import (
 
 	"github.com/evbgsl/bank-service-evbgsl/internal/config"
 	"github.com/evbgsl/bank-service-evbgsl/internal/db"
+	"github.com/evbgsl/bank-service-evbgsl/internal/handlers"
+	"github.com/evbgsl/bank-service-evbgsl/internal/repositories"
+	"github.com/evbgsl/bank-service-evbgsl/internal/services"
 
 	"github.com/gorilla/mux"
 	"github.com/sirupsen/logrus"
@@ -27,6 +30,10 @@ func main() {
 
 	log.Info("database connection established")
 
+	userRepository := repositories.NewUserRepository(database)
+	authService := services.NewAuthService(userRepository)
+	authHandler := handlers.NewAuthHandler(authService)
+
 	router := mux.NewRouter()
 
 	router.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
@@ -47,6 +54,8 @@ func main() {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{"status":"ok","database":"available"}`))
 	}).Methods(http.MethodGet)
+
+	router.HandleFunc("/register", authHandler.Register).Methods(http.MethodPost)
 
 	serverAddr := ":" + cfg.AppPort
 
