@@ -273,63 +273,79 @@ curl http://localhost:8080/transactions \
 Authorization: Bearer <token>
 ```
 
-### Выпуск виртуальной карты
+### Получение JWT-токена
+```bash
+TOKEN=$(curl -s -X POST http://localhost:8080/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"user1@example.com","password":"user123"}' \
+  | sed -E 's/.*"token":"([^"]+)".*/\1/')
 
-Endpoint:
+echo "$TOKEN"
+```
+
+### Выпуск виртуальной карты
 ```http
 POST /cards
 ```
 
-Пример:
 ```bash
-curl -X POST http://localhost:8080/cards \
- -H "Content-Type: application/json" \
- -H "Authorization: Bearer $TOKEN" \
- -d '{"accountId":1}'
+curl -s -X POST http://localhost:8080/cards \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{"accountId":1}'
 ```
 
 Пример ответа:
 ```json
-
 {
- "id": 1,
- "accountId": 1,
- "cardNumber": "2202123456789012",
- "maskedNumber": "220212******9012",
- "expiryMonth": 5,
- "expiryYear": 2029,
- "cvv": "123",
- "message": "card created successfully. Save card number and CVV now; CVV will not be shown again."
+  "id": 1,
+  "accountId": 1,
+  "cardNumber": "2202123456789012",
+  "maskedNumber": "220212******9012",
+  "expiry": "05/2029",
+  "cvv": "123",
+  "message": "card created successfully. Save card number and CVV now; CVV will not be shown again."
 }
 ```
-
 Полный номер карты и CVV возвращаются только при выпуске карты.
 ### Получение списка карт
-
-Endpoint:
 ```http
 GET /cards
 ```
 
-Пример:
 ```bash
-curl http://localhost:8080/cards \
- -H "Authorization: Bearer $TOKEN"
+curl -s http://localhost:8080/cards \
+  -H "Authorization: Bearer $TOKEN"
+```
+В списке карт возвращается только маскированный номер.
+### Получение деталей карты
+
+```http
+GET /cards/{cardId}
+```
+
+```bash
+curl -s http://localhost:8080/cards/1 \
+  -H "Authorization: Bearer $TOKEN"
 ```
 
 Пример ответа:
 ```json
-[
- {
+{
   "id": 1,
-  "userId": 1,
   "accountId": 1,
+  "cardNumber": "2202123456789012",
   "maskedNumber": "220212******9012",
-  "expiryMonth": 5,
-  "expiryYear": 2029,
-  "status": "ACTIVE",
-  "createdAt": "2026-05-06T12:00:00Z",
-  "updatedAt": "2026-05-06T12:00:00Z"
- }
-]
+  "expiry": "05/2029",
+  "status": "ACTIVE"
+}
 ```
+CVV не возвращается повторно.
+### Безопасность карточных данных
+
+В проекте используется следующая схема защиты:
+- номер карты хранится в БД в зашифрованном виде через `pgcrypto`;
+- срок действия карты хранится в БД в зашифрованном виде через `pgcrypto`;
+- CVV хранится только как bcrypt-хеш;
+- HMAC-SHA256 используется для проверки целостности номера карты;
+- доступ к карте проверяется через JWT и `userId` владельца.
