@@ -287,6 +287,35 @@ curl -s http://localhost:8080/cards/1 \
 
 CVV повторно не возвращается.
 
+### Оплата картой
+
+Endpoint:
+
+```http
+POST /cards/{cardId}/pay
+```
+
+```bash
+curl -s -X POST http://localhost:8080/cards/1/pay \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{"amount":750,"merchant":"Coffee Shop"}'
+```
+
+Пример ответа:
+```json
+{
+  "cardId": 1,
+  "accountId": 1,
+  "amount": 750,
+  "balance": 4250,
+  "merchant": "Coffee Shop",
+  "message": "card payment completed successfully"
+}
+```
+
+При оплате картой сумма списывается со счета, к которому привязана карта, и в историю операций добавляется транзакция `CARD_PAYMENT`.
+
 ## Кредиты
 
 ### Оформить кредит

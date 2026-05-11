@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"math/big"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/evbgsl/bank-service-evbgsl/internal/models"
@@ -148,6 +149,42 @@ func (s *CardService) GetCardDetails(userID int64, cardID int64) (*models.CardDe
 		Expiry:       expiry,
 		Status:       card.Status,
 	}, nil
+}
+
+func (s *CardService) PayByCard(
+	userID int64,
+	cardID int64,
+	req models.CardPaymentRequest,
+) (*models.CardPaymentResponse, error) {
+	if cardID <= 0 {
+		return nil, ErrInvalidCardData
+	}
+
+	if req.Amount <= 0 {
+		return nil, ErrInvalidAmount
+	}
+
+	merchant := strings.TrimSpace(req.Merchant)
+	if merchant == "" {
+		merchant = "Unknown merchant"
+	}
+
+	resp, err := s.cardRepo.PayByCard(userID, cardID, req.Amount)
+	if err != nil {
+		if errors.Is(err, repositories.ErrCardNotFound) {
+			return nil, ErrCardNotFound
+		}
+
+		if errors.Is(err, repositories.ErrInsufficientFunds) {
+			return nil, ErrInsufficientFunds
+		}
+
+		return nil, err
+	}
+
+	resp.Merchant = merchant
+
+	return resp, nil
 }
 
 func generateCardNumber() (string, error) {

@@ -38,3 +38,17 @@ type CardDetailsResponse struct {
 	Expiry       string `json:"expiry"`
 	Status       string `json:"status"`
 }
+
+type CardPaymentRequest struct {
+	Amount   float64 `json:"amount"`
+	Merchant string  `json:"merchant"`
+}
+
+type CardPaymentResponse struct {
+	CardID    int64   `json:"cardId"`
+	AccountID int64   `json:"accountId"`
+	Amount    float64 `json:"amount"`
+	Balance   float64 `json:"balance"`
+	Merchant  string  `json:"merchant"`
+	Message   string  `json:"message"`
+}

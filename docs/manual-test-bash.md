@@ -94,7 +94,16 @@ curl -s http://localhost:8080/cards \
   -H "Authorization: Bearer $TOKEN"
 ```
 
-## 12. Create credit
+## 12. Card payment
+
+```bash
+curl -s -X POST http://localhost:8080/cards/1/pay \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{"amount":750,"merchant":"Coffee Shop"}'
+```
+
+## 13. Create credit
 
 ```bash
 curl -s -X POST http://localhost:8080/credits \
@@ -103,35 +112,35 @@ curl -s -X POST http://localhost:8080/credits \
   -d '{"accountId":1,"principalAmount":100000,"interestRate":18,"termMonths":12}'
 ```
 
-## 13. Credit schedule
+## 14. Credit schedule
 
 ```bash
 curl -s http://localhost:8080/credits/1/schedule \
   -H "Authorization: Bearer $TOKEN"
 ```
 
-## 14. Analytics
+## 15. Analytics
 
 ```bash
 curl -s http://localhost:8080/analytics \
   -H "Authorization: Bearer $TOKEN"
 ```
 
-## 15. Balance prediction
+## 16. Balance prediction
 
 ```bash
 curl -s "http://localhost:8080/accounts/1/predict?days=30" \
   -H "Authorization: Bearer $TOKEN"
 ```
 
-## 16. CBR key rate
+## 17. CBR key rate
 
 ```bash
 curl -s http://localhost:8080/rates/key \
   -H "Authorization: Bearer $TOKEN"
 ```
 
-## 17. Test email
+## 18. Test email
 
 ```bash
 curl -s -X POST http://localhost:8080/notifications/test-email \
