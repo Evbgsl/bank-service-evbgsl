@@ -1,6 +1,6 @@
 CREATE TABLE IF NOT EXISTS cards (
-                                     id BIGSERIAL PRIMARY KEY,
-                                     user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    id BIGSERIAL PRIMARY KEY,
+    user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     account_id BIGINT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
     card_number TEXT NOT NULL,
     masked_number VARCHAR(32) NOT NULL,
@@ -10,4 +10,4 @@ CREATE TABLE IF NOT EXISTS cards (
     status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE',
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
-    );
+);
