@@ -33,12 +33,15 @@ func main() {
 
 	userRepository := repositories.NewUserRepository(database)
 	accountRepository := repositories.NewAccountRepository(database)
+	transactionRepository := repositories.NewTransactionRepository(database)
 
 	authService := services.NewAuthService(userRepository, cfg.JWTSecret)
 	accountService := services.NewAccountService(accountRepository)
+	transactionService := services.NewTransactionService(transactionRepository)
 
 	authHandler := handlers.NewAuthHandler(authService)
 	accountHandler := handlers.NewAccountHandler(accountService)
+	transactionHandler := handlers.NewTransactionHandler(transactionService)
 
 	router := mux.NewRouter()
 
@@ -72,6 +75,9 @@ func main() {
 	authRouter.HandleFunc("/accounts", accountHandler.CreateAccount).Methods(http.MethodPost)
 	authRouter.HandleFunc("/accounts", accountHandler.GetUserAccounts).Methods(http.MethodGet)
 	authRouter.HandleFunc("/accounts/{accountId}/deposit", accountHandler.Deposit).Methods(http.MethodPost)
+
+	authRouter.HandleFunc("/transfer", transactionHandler.Transfer).Methods(http.MethodPost)
+	authRouter.HandleFunc("/transactions", transactionHandler.GetUserTransactions).Methods(http.MethodGet)
 
 	serverAddr := ":" + cfg.AppPort
 
