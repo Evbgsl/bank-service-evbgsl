@@ -9,9 +9,10 @@ import (
 )
 
 var (
-	ErrAccountNotFound      = errors.New("account not found")
-	ErrAccountAlreadyExists = errors.New("account already exists")
-	ErrForbiddenAccount     = errors.New("account does not belong to user")
+	ErrAccountNotFound        = errors.New("account not found")
+	ErrAccountAlreadyExists   = errors.New("account already exists")
+	ErrForbiddenAccount       = errors.New("account does not belong to user")
+	ErrInvalidAccountCurrency = errors.New("invalid account currency")
 )
 
 type AccountRepository struct {

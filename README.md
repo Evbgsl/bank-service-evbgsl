@@ -197,4 +197,65 @@ curl.exe -X POST http://localhost:8080/accounts/1/deposit `
   "message": "account deposited successfully"
 }
 ```
+---
+## Переводы и история операций
+
+Все endpoints требуют JWT-токен:
+```http
+Authorization: Bearer <token>
+```
+
+### Перевод между счетами
+
+Endpoint:
+```http
+POST /transfer
+```
+
+Пример PowerShell:
+```powershell
+curl.exe -X POST http://localhost:8080/transfer `
+  -H "Content-Type: application/json" `
+  -H "Authorization: Bearer $token" `
+  -d '{\"fromAccountId\":1,\"toAccountId\":2,\"amount\":1200}'
+```
+
+Пример ответа:
+```json
+{
+  "transactionId": 1,
+  "fromAccountId": 1,
+  "toAccountId": 2,
+  "amount": 1200,
+  "fromBalance": 3800,
+  "message": "transfer completed successfully"
+}
+```
+
+### История операций
+
+Endpoint:
+```http
+GET /transactions
+```
+
+Пример:
+```powershell
+curl.exe http://localhost:8080/transactions -H "Authorization: Bearer $token"
+```
+
+Пример ответа:
+```json
+[
+  {
+    "id": 1,
+    "userId": 1,
+    "fromAccountId": 1,
+    "toAccountId": 2,
+    "transactionType": "TRANSFER",
+    "amount": 1200,
+    "createdAt": "2026-05-06T12:00:00Z"
+  }
+]
+```
 
