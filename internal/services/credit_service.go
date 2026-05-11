@@ -123,6 +123,10 @@ func (s *CreditService) GetCreditSchedule(
 	return schedule, nil
 }
 
+func (s *CreditService) ProcessDuePayments() (*models.PaymentProcessingResult, error) {
+	return s.creditRepo.ProcessDuePayments()
+}
+
 func calculateAnnuityPayment(
 	principal float64,
 	annualRate float64,

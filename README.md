@@ -424,3 +424,50 @@ curl -s http://localhost:8080/credits/1/schedule \
   }
 ]
 ```
+
+---
+## Автоматическое списание кредитных платежей
+
+В приложении реализован scheduler, который периодически обрабатывает платежи по кредитам.
+
+Интервал задается переменной окружения:
+```env
+PAYMENT_SCHEDULER_INTERVAL_HOURS=12
+```
+
+Scheduler выполняет следующие действия:
+- ищет платежи со сроком `payment_date <= CURRENT_DATE`;
+- если на счете достаточно средств - списывает платеж;
+- переводит платеж в статус `PAID`;
+- уменьшает `remaining_amount` кредита;
+- записывает операцию `CREDIT_PAYMENT` в историю транзакций;
+- если средств недостаточно - переводит платеж в статус `OVERDUE`;
+- при первой просрочке увеличивает сумму платежа на 10%.
+
+### Проверка scheduler
+
+Для теста можно вручную сделать ближайший платеж текущим:
+
+```bash
+psql -U postgres -d bank_service
+```
+
+```sql
+UPDATE payment_schedules
+SET payment_date = CURRENT_DATE
+WHERE id = 1;
+```
+
+После перезапуска приложения scheduler обработает платеж примерно через 5 секунд.
+
+Проверка графика:
+```bash
+curl -s http://localhost:8080/credits/1/schedule \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+Проверка истории операций:
+```bash
+curl -s http://localhost:8080/transactions \
+  -H "Authorization: Bearer $TOKEN"
+```
