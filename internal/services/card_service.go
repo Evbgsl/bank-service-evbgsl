@@ -1,7 +1,10 @@
 package services
 
 import (
+	"crypto/hmac"
 	"crypto/rand"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"math/big"
@@ -14,19 +17,29 @@ import (
 )
 
 var (
-	ErrInvalidCardData = errors.New("invalid card data")
-	ErrCardNotFound    = errors.New("card not found")
+	ErrInvalidCardData  = errors.New("invalid card data")
+	ErrCardNotFound     = errors.New("card not found")
+	ErrCardDataModified = errors.New("card data integrity check failed")
 )
 
 type CardService struct {
-	cardRepo    *repositories.CardRepository
-	accountRepo *repositories.AccountRepository
+	cardRepo       *repositories.CardRepository
+	accountRepo    *repositories.AccountRepository
+	cardPGPKey     string
+	cardHMACSecret string
 }
 
-func NewCardService(cardRepo *repositories.CardRepository, accountRepo *repositories.AccountRepository) *CardService {
+func NewCardService(
+	cardRepo *repositories.CardRepository,
+	accountRepo *repositories.AccountRepository,
+	cardPGPKey string,
+	cardHMACSecret string,
+) *CardService {
 	return &CardService{
-		cardRepo:    cardRepo,
-		accountRepo: accountRepo,
+		cardRepo:       cardRepo,
+		accountRepo:    accountRepo,
+		cardPGPKey:     cardPGPKey,
+		cardHMACSecret: cardHMACSecret,
 	}
 }
 
@@ -59,20 +72,19 @@ func (s *CardService) CreateCard(userID int64, req models.CreateCardRequest) (*m
 		return nil, err
 	}
 
-	expiry := time.Now().AddDate(3, 0, 0)
+	expiryTime := time.Now().AddDate(3, 0, 0)
+	expiry := fmt.Sprintf("%02d/%d", int(expiryTime.Month()), expiryTime.Year())
 
 	card := &models.Card{
-		UserID:       userID,
-		AccountID:    account.ID,
-		CardNumber:   cardNumber,
-		MaskedNumber: maskCardNumber(cardNumber),
-		ExpiryMonth:  int(expiry.Month()),
-		ExpiryYear:   expiry.Year(),
-		CVVHash:      string(cvvHash),
-		Status:       "ACTIVE",
+		UserID:         userID,
+		AccountID:      account.ID,
+		CardNumberHMAC: computeHMAC(cardNumber, s.cardHMACSecret),
+		MaskedNumber:   maskCardNumber(cardNumber),
+		CVVHash:        string(cvvHash),
+		Status:         "ACTIVE",
 	}
 
-	if err := s.cardRepo.Create(card); err != nil {
+	if err := s.cardRepo.Create(card, cardNumber, expiry, s.cardPGPKey); err != nil {
 		return nil, err
 	}
 
@@ -81,8 +93,7 @@ func (s *CardService) CreateCard(userID int64, req models.CreateCardRequest) (*m
 		AccountID:    card.AccountID,
 		CardNumber:   cardNumber,
 		MaskedNumber: card.MaskedNumber,
-		ExpiryMonth:  card.ExpiryMonth,
-		ExpiryYear:   card.ExpiryYear,
+		Expiry:       expiry,
 		CVV:          cvv,
 		Message:      "card created successfully. Save card number and CVV now; CVV will not be shown again.",
 	}, nil
@@ -92,21 +103,65 @@ func (s *CardService) GetUserCards(userID int64) ([]models.Card, error) {
 	return s.cardRepo.FindByUserID(userID)
 }
 
+func (s *CardService) GetCardDetails(userID int64, cardID int64) (*models.CardDetailsResponse, error) {
+	if cardID <= 0 {
+		return nil, ErrInvalidCardData
+	}
+
+	card, err := s.cardRepo.FindByIDAndUserID(cardID, userID)
+	if err != nil {
+		if errors.Is(err, repositories.ErrCardNotFound) {
+			return nil, ErrCardNotFound
+		}
+
+		return nil, err
+	}
+
+	cardNumber, err := s.cardRepo.DecryptCardNumber(cardID, userID, s.cardPGPKey)
+	if err != nil {
+		if errors.Is(err, repositories.ErrCardNotFound) {
+			return nil, ErrCardNotFound
+		}
+
+		return nil, err
+	}
+
+	expectedHMAC := computeHMAC(cardNumber, s.cardHMACSecret)
+	if !hmac.Equal([]byte(expectedHMAC), []byte(card.CardNumberHMAC)) {
+		return nil, ErrCardDataModified
+	}
+
+	expiry, err := s.cardRepo.DecryptExpiry(cardID, userID, s.cardPGPKey)
+	if err != nil {
+		if errors.Is(err, repositories.ErrCardNotFound) {
+			return nil, ErrCardNotFound
+		}
+
+		return nil, err
+	}
+
+	return &models.CardDetailsResponse{
+		ID:           card.ID,
+		AccountID:    card.AccountID,
+		CardNumber:   cardNumber,
+		MaskedNumber: card.MaskedNumber,
+		Expiry:       expiry,
+		Status:       card.Status,
+	}, nil
+}
+
 func generateCardNumber() (string, error) {
 	const prefix = "2202"
-
-	base := prefix
 
 	randomPart, err := randomCardDigits(11)
 	if err != nil {
 		return "", err
 	}
 
-	base += randomPart
+	numberWithoutCheckDigit := prefix + randomPart
+	checkDigit := calculateLuhnCheckDigit(numberWithoutCheckDigit)
 
-	checkDigit := calculateLuhnCheckDigit(base)
-
-	return base + strconv.Itoa(checkDigit), nil
+	return numberWithoutCheckDigit + strconv.Itoa(checkDigit), nil
 }
 
 func calculateLuhnCheckDigit(numberWithoutCheckDigit string) int {
@@ -160,4 +215,11 @@ func maskCardNumber(cardNumber string) string {
 	}
 
 	return cardNumber[:6] + "******" + cardNumber[len(cardNumber)-4:]
+}
+
+func computeHMAC(data string, secret string) string {
+	h := hmac.New(sha256.New, []byte(secret))
+	h.Write([]byte(data))
+
+	return hex.EncodeToString(h.Sum(nil))
 }
