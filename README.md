@@ -471,3 +471,69 @@ curl -s http://localhost:8080/credits/1/schedule \
 curl -s http://localhost:8080/transactions \
   -H "Authorization: Bearer $TOKEN"
 ```
+
+---
+## Аналитика
+
+Все endpoints требуют JWT-токен:
+```http
+Authorization: Bearer <token>
+```
+
+### Финансовая аналитика за месяц
+```http
+GET /analytics
+```
+
+По умолчанию возвращается аналитика за текущий месяц.
+```bash
+curl -s http://localhost:8080/analytics \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+Можно указать месяц явно:
+```bash
+curl -s "http://localhost:8080/analytics?month=2026-05" \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+Пример ответа:
+```json
+{
+  "month": "2026-05",
+  "income": 1200,
+  "expenses": 2500,
+  "net": -1300,
+  "creditLoad": {
+    "activeCreditsCount": 1,
+    "totalMonthlyPayments": 9168,
+    "totalRemainingDebt": 92332
+  }
+}
+```
+
+### Прогноз баланса счета
+
+```http
+GET /accounts/{accountId}/predict?days=N
+```
+
+Максимальный период прогноза - 365 дней.
+```bash
+curl -s "http://localhost:8080/accounts/1/predict?days=30" \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+Пример ответа:
+```json
+{
+  "accountId": 1,
+  "days": 30,
+  "currentBalance": 100000,
+  "plannedPayments": 9168,
+  "predictedBalance": 90832,
+  "message": "prediction includes planned and overdue credit payments only"
+}
+```
+
+Прогноз учитывает текущий баланс и запланированные/просроченные кредитные платежи.

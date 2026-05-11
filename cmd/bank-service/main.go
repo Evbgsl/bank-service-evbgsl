@@ -37,6 +37,7 @@ func main() {
 	transactionRepository := repositories.NewTransactionRepository(database)
 	cardRepository := repositories.NewCardRepository(database)
 	creditRepository := repositories.NewCreditRepository(database)
+	analyticsRepository := repositories.NewAnalyticsRepository(database)
 
 	authService := services.NewAuthService(userRepository, cfg.JWTSecret)
 	accountService := services.NewAccountService(accountRepository)
@@ -51,12 +52,14 @@ func main() {
 		creditRepository,
 		accountRepository,
 	)
+	analyticsService := services.NewAnalyticsService(analyticsRepository)
 
 	authHandler := handlers.NewAuthHandler(authService)
 	accountHandler := handlers.NewAccountHandler(accountService)
 	transactionHandler := handlers.NewTransactionHandler(transactionService)
 	cardHandler := handlers.NewCardHandler(cardService)
 	creditHandler := handlers.NewCreditHandler(creditService)
+	analyticsHandler := handlers.NewAnalyticsHandler(analyticsService)
 
 	scheduler.StartPaymentScheduler(
 		creditService,
@@ -96,6 +99,7 @@ func main() {
 	authRouter.HandleFunc("/accounts", accountHandler.CreateAccount).Methods(http.MethodPost)
 	authRouter.HandleFunc("/accounts", accountHandler.GetUserAccounts).Methods(http.MethodGet)
 	authRouter.HandleFunc("/accounts/{accountId}/deposit", accountHandler.Deposit).Methods(http.MethodPost)
+	authRouter.HandleFunc("/accounts/{accountId}/predict", analyticsHandler.PredictBalance).Methods(http.MethodGet)
 
 	authRouter.HandleFunc("/transfer", transactionHandler.Transfer).Methods(http.MethodPost)
 	authRouter.HandleFunc("/transactions", transactionHandler.GetUserTransactions).Methods(http.MethodGet)
@@ -107,6 +111,8 @@ func main() {
 	authRouter.HandleFunc("/credits", creditHandler.CreateCredit).Methods(http.MethodPost)
 	authRouter.HandleFunc("/credits", creditHandler.GetUserCredits).Methods(http.MethodGet)
 	authRouter.HandleFunc("/credits/{creditId}/schedule", creditHandler.GetCreditSchedule).Methods(http.MethodGet)
+
+	authRouter.HandleFunc("/analytics", analyticsHandler.GetMonthlyAnalytics).Methods(http.MethodGet)
 
 	serverAddr := ":" + cfg.AppPort
 
