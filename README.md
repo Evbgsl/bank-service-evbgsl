@@ -1,279 +1,191 @@
-# Bank Service Go.
+# Bank Service Go
+
 REST API банковского сервиса на Go.
 
-## Запуск
-```bash
-go run ./cmd/bank-service
-```
-### Проверка
-```bash
-curl http://localhost:8080/health
+Проект реализует регистрацию пользователей, JWT-аутентификацию, банковские счета, переводы, виртуальные карты, кредиты, график платежей, автоматическую обработку платежей, финансовую аналитику, интеграцию с ЦБ РФ и SMTP-уведомления.
+
+## Стек
+
+- Go
+- gorilla/mux
+- PostgreSQL
+- lib/pq
+- JWT
+- bcrypt
+- pgcrypto
+- HMAC-SHA256
+- logrus
+- beevik/etree
+- gomail.v2
+
+## Основные возможности
+
+- регистрация пользователей;
+- аутентификация через JWT;
+- создание банковских счетов;
+- пополнение счетов;
+- переводы между счетами;
+- история операций;
+- выпуск виртуальных карт;
+- шифрование карточных данных через `pgcrypto`;
+- HMAC-SHA256 для проверки целостности номера карты;
+- bcrypt-хеширование CVV;
+- оформление кредитов;
+- генерация графика платежей;
+- scheduler для автоматического списания кредитных платежей;
+- штраф +10% за просрочку;
+- аналитика доходов и расходов;
+- расчет кредитной нагрузки;
+- прогноз баланса;
+- получение ключевой ставки ЦБ РФ через SOAP;
+- SMTP-уведомления.
+
+## Структура проекта
+
+```text
+cmd/bank-service       точка входа приложения
+internal/config        конфигурация приложения
+internal/db            подключение к PostgreSQL
+internal/handlers      HTTP-обработчики
+internal/middleware    JWT middleware
+internal/models        модели и DTO
+internal/repositories  работа с БД
+internal/scheduler     scheduler кредитных платежей
+internal/services      бизнес-логика
+migrations             SQL-миграции
+pkg/response           единый формат JSON-ответов
 ```
 
-Ответ:
-```json
-{"status":"ok"}
+## Подготовка базы данных
+
+Создайте базу данных:
+
+```bash
+psql -U postgres
 ```
 
----
+```sql
+CREATE DATABASE bank_service;
+\q
+```
+
+Далее выполните SQL-файлы из папки `migrations` по порядку:
+
+```text
+001_create_users_table.sql
+002_create_accounts_table.sql
+003_create_transactions_table.sql
+004_create_cards_table.sql
+005_secure_cards_table.sql
+006_create_credits_tables.sql
+007_add_scheduler_indexes.sql
+008_add_analytics_indexes.sql
+```
+
 ## Конфигурация
-Приложение использует переменные окружения.
-Пример файла конфигурации находится в `.env.example`.
-Для локального запуска можно создать файл `.env`:
-```env
 
+Создайте локальный файл `.env` на основе `.env.example`.
+
+Пример:
+
+```env
 APP_PORT=8080
+
 DB_HOST=localhost
 DB_PORT=5432
 DB_USER=postgres
 DB_PASSWORD=your_postgres_password
 DB_NAME=bank_service
 DB_SSLMODE=disable
+
+JWT_SECRET=your_jwt_secret
+
+CARD_PGP_KEY=your_card_pgp_key
+CARD_HMAC_SECRET=your_card_hmac_secret
+
+PAYMENT_SCHEDULER_INTERVAL_HOURS=12
+
+BANK_RATE_MARGIN=5
+
+SMTP_HOST=smtp.example.com
+SMTP_PORT=587
+SMTP_USER=noreply@example.com
+SMTP_PASSWORD=your_smtp_password
+SMTP_FROM=noreply@example.com
+SMTP_ENABLED=false
 ```
 
-Подготовка базы данных:
-```sql
-CREATE DATABASE bank_service;
-```
+Файл `.env` не должен попадать в Git.
 
-Проверка подключения к БД:
+## Запуск
+
 ```bash
-curl http://localhost:8080/health/db
+go run ./cmd/bank-service
+```
+
+Проверка:
+
+```bash
+curl -s http://localhost:8080/health
 ```
 
 Ожидаемый ответ:
+
+```json
+{"status":"ok"}
+```
+
+Проверка подключения к БД:
+
+```bash
+curl -s http://localhost:8080/health/db
+```
+
+Ожидаемый ответ:
+
 ```json
 {"status":"ok","database":"available"}
 ```
 
----
-## Регистрация пользователя
+## Регистрация
 
-Endpoint:
-```http
-POST /register
-```
-
-Пример запроса:
 ```bash
-curl -X POST http://localhost:8080/register \
- -H "Content-Type: application/json" \
- -d '{"username":"user1","email":"user1@example.com","password":"user123"}'
-```
-
-Пример успешного ответа:
-```json
-{
- "id": 1,
- "username": "user1",
- "email": "user1@example.com",
- "message": "user registered successfully"
-}
-```
-
-Повторная регистрация с тем же `email` или `username` возвращает ошибку `409 Conflict`.
-
-Пример ошибки:
-```json
-{
- "message": "user with this email or username already exists"
-}
-```
-
----
-## Аутентификация
-### Login
-Endpoint:
-```http
-POST /login
-```
-
-Пример запроса:
-```bash
-curl -X POST http://localhost:8080/login \
- -H "Content-Type: application/json" \
- -d '{"email":"user1@example.com","password":"user123"}'
+curl -s -X POST http://localhost:8080/register \
+  -H "Content-Type: application/json" \
+  -d '{"username":"user1","email":"user1@example.com","password":"user123"}'
 ```
 
 Пример ответа:
+
 ```json
 {
- "token": "eyJ...",
- "tokenType": "Bearer",
- "expiresInSeconds": 86400
-}
-```
-### Защищенный endpoint
-
-Endpoint:
-```http
-GET /me
-```
-
-Запрос без токена вернет ошибку:
-```json
-{
- "message": "authorization header required"
-}
-```
-
-Пример запроса с токеном:
-```bash
-TOKEN=$(curl -s -X POST http://localhost:8080/login \
- -H "Content-Type: application/json" \
- -d '{"email":"user1@example.com","password":"user123"}' \
- | grep -o '"token":"[^"]*' \
- | cut -d'"' -f4)
-curl http://localhost:8080/me \
- -H "Authorization: Bearer $TOKEN"
-```
-
-Пример ответа:
-```json
-
-{
- "userId": 1
-}
-```
-
----
-## Счета
-
-Все endpoints ниже требуют JWT-токен в заголовке:
-```http
-Authorization: Bearer <token>
-```
-
-### Создание счета
-
-Endpoint:
-```http
-POST /accounts
-```
-
-Пример:
-```bash
-curl -X POST http://localhost:8080/accounts \
- -H "Content-Type: application/json" \
- -H "Authorization: Bearer $TOKEN" \
- -d '{"currency":"RUB"}'
-```
-
-Пример ответа:
-```json
-{
- "id": 1,
- "accountNumber": "40817810123456789012",
- "balance": 0,
- "currency": "RUB",
- "message": "account created successfully"
-}
-```
-### Получение своих счетов
-Endpoint:
-```http
-GET /accounts
-```
-
-Пример:
-```bash
-curl http://localhost:8080/accounts \
- -H "Authorization: Bearer $TOKEN"
-```
-### Пополнение счета
-Endpoint:
-```http
-POST /accounts/{accountId}/deposit
-```
-
-Пример:
-```bash
-curl -X POST http://localhost:8080/accounts/1/deposit \
- -H "Content-Type: application/json" \
- -H "Authorization: Bearer $TOKEN" \
- -d '{"amount":1500.50}'
-```
-
-Пример ответа:
-```json
-{
- "accountId": 1,
- "balance": 1500.5,
- "message": "account deposited successfully"
-}
-```
-
----
-## Переводы и история операций
-
-Все endpoints требуют JWT-токен:
-```http
-Authorization: Bearer <token>
-```
-### Перевод между счетами
-
-Endpoint:
-```http
-POST /transfer
-```
-
-Пример:
-```bash
-
-curl -X POST http://localhost:8080/transfer \
- -H "Content-Type: application/json" \
- -H "Authorization: Bearer $TOKEN" \
- -d '{"fromAccountId":1,"toAccountId":2,"amount":1200}'
-```
-
-Пример ответа:
-```json
-{
- "transactionId": 1,
- "fromAccountId": 1,
- "toAccountId": 2,
- "amount": 1200,
- "fromBalance": 3800,
- "message": "transfer completed successfully"
-}
-```
-### История операций
-
-Endpoint:
-```http
-GET /transactions
-```
-
-Пример:
-```bash
-curl http://localhost:8080/transactions \
- -H "Authorization: Bearer $TOKEN"
-```
-
-Пример ответа:
-```json
-[
- {
   "id": 1,
-  "userId": 1,
-  "fromAccountId": 1,
-  "toAccountId": 2,
-  "transactionType": "TRANSFER",
-  "amount": 1200,
-  "createdAt": "2026-05-06T12:00:00Z"
- }
-]
+  "username": "user1",
+  "email": "user1@example.com",
+  "message": "user registered successfully"
+}
 ```
 
----
-## Карты
+## Аутентификация
 
-Все endpoints требуют JWT-токен:
-```http
-Authorization: Bearer <token>
+```bash
+curl -s -X POST http://localhost:8080/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"user1@example.com","password":"user123"}'
 ```
 
-### Получение JWT-токена
+Пример ответа:
+
+```json
+{
+  "token": "eyJ...",
+  "tokenType": "Bearer",
+  "expiresInSeconds": 86400
+}
+```
+
+Для дальнейших запросов можно сохранить токен:
+
 ```bash
 TOKEN=$(curl -s -X POST http://localhost:8080/login \
   -H "Content-Type: application/json" \
@@ -283,10 +195,59 @@ TOKEN=$(curl -s -X POST http://localhost:8080/login \
 echo "$TOKEN"
 ```
 
-### Выпуск виртуальной карты
-```http
-POST /cards
+Проверка защищенного endpoint:
+
+```bash
+curl -s http://localhost:8080/me \
+  -H "Authorization: Bearer $TOKEN"
 ```
+
+## Счета
+
+### Создать счет
+
+```bash
+curl -s -X POST http://localhost:8080/accounts \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{"currency":"RUB"}'
+```
+
+### Получить свои счета
+
+```bash
+curl -s http://localhost:8080/accounts \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+### Пополнить счет
+
+```bash
+curl -s -X POST http://localhost:8080/accounts/1/deposit \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{"amount":5000}'
+```
+
+## Переводы
+
+```bash
+curl -s -X POST http://localhost:8080/transfer \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{"fromAccountId":1,"toAccountId":2,"amount":1200}'
+```
+
+## История операций
+
+```bash
+curl -s http://localhost:8080/transactions \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+## Карты
+
+### Выпуск карты
 
 ```bash
 curl -s -X POST http://localhost:8080/cards \
@@ -296,6 +257,7 @@ curl -s -X POST http://localhost:8080/cards \
 ```
 
 Пример ответа:
+
 ```json
 {
   "id": 1,
@@ -307,62 +269,28 @@ curl -s -X POST http://localhost:8080/cards \
   "message": "card created successfully. Save card number and CVV now; CVV will not be shown again."
 }
 ```
+
 Полный номер карты и CVV возвращаются только при выпуске карты.
-### Получение списка карт
-```http
-GET /cards
-```
+
+### Список карт
 
 ```bash
 curl -s http://localhost:8080/cards \
   -H "Authorization: Bearer $TOKEN"
 ```
-В списке карт возвращается только маскированный номер.
-### Получение деталей карты
 
-```http
-GET /cards/{cardId}
-```
+### Детали карты
 
 ```bash
 curl -s http://localhost:8080/cards/1 \
   -H "Authorization: Bearer $TOKEN"
 ```
 
-Пример ответа:
-```json
-{
-  "id": 1,
-  "accountId": 1,
-  "cardNumber": "2202123456789012",
-  "maskedNumber": "220212******9012",
-  "expiry": "05/2029",
-  "status": "ACTIVE"
-}
-```
-CVV не возвращается повторно.
-### Безопасность карточных данных
-
-В проекте используется следующая схема защиты:
-- номер карты хранится в БД в зашифрованном виде через `pgcrypto`;
-- срок действия карты хранится в БД в зашифрованном виде через `pgcrypto`;
-- CVV хранится только как bcrypt-хеш;
-- HMAC-SHA256 используется для проверки целостности номера карты;
-- доступ к карте проверяется через JWT и `userId` владельца.
-
----
+CVV повторно не возвращается.
 
 ## Кредиты
 
-Все endpoints требуют JWT-токен:
-```http
-Authorization: Bearer <token>
-```
-
-### Оформление кредита
-```http
-POST /credits
-```
+### Оформить кредит
 
 ```bash
 curl -s -X POST http://localhost:8080/credits \
@@ -371,82 +299,41 @@ curl -s -X POST http://localhost:8080/credits \
   -d '{"accountId":1,"principalAmount":100000,"interestRate":18,"termMonths":12}'
 ```
 
-Пример ответа:
-```json
-{
-  "id": 1,
-  "accountId": 1,
-  "principalAmount": 100000,
-  "interestRate": 18,
-  "termMonths": 12,
-  "monthlyPayment": 9168,
-  "remainingAmount": 100000,
-  "status": "ACTIVE",
-  "message": "credit created successfully"
-}
-```
-
-При оформлении кредита сумма кредита зачисляется на выбранный счет пользователя.
-
-### Получение списка кредитов
-```http
-GET /credits
-```
+### Список кредитов
 
 ```bash
 curl -s http://localhost:8080/credits \
   -H "Authorization: Bearer $TOKEN"
 ```
 
-### Получение графика платежей
-```http
-GET /credits/{creditId}/schedule
-```
+### График платежей
 
 ```bash
 curl -s http://localhost:8080/credits/1/schedule \
   -H "Authorization: Bearer $TOKEN"
 ```
 
-Пример ответа:
-```json
-[
-  {
-    "id": 1,
-    "creditId": 1,
-    "paymentNumber": 1,
-    "paymentDate": "2026-06-11T00:00:00Z",
-    "amount": 9168,
-    "principalPart": 7668,
-    "interestPart": 1500,
-    "status": "PLANNED",
-    "createdAt": "2026-05-11T12:00:00Z"
-  }
-]
-```
+## Scheduler кредитных платежей
 
----
-## Автоматическое списание кредитных платежей
+Scheduler запускается автоматически при старте приложения.
 
-В приложении реализован scheduler, который периодически обрабатывает платежи по кредитам.
+Интервал задается переменной:
 
-Интервал задается переменной окружения:
 ```env
 PAYMENT_SCHEDULER_INTERVAL_HOURS=12
 ```
 
-Scheduler выполняет следующие действия:
-- ищет платежи со сроком `payment_date <= CURRENT_DATE`;
-- если на счете достаточно средств - списывает платеж;
+Логика:
+
+- ищет платежи с `payment_date <= CURRENT_DATE`;
+- если денег хватает — списывает платеж;
 - переводит платеж в статус `PAID`;
-- уменьшает `remaining_amount` кредита;
-- записывает операцию `CREDIT_PAYMENT` в историю транзакций;
-- если средств недостаточно - переводит платеж в статус `OVERDUE`;
+- уменьшает остаток долга;
+- создает транзакцию `CREDIT_PAYMENT`;
+- если денег не хватает — переводит платеж в статус `OVERDUE`;
 - при первой просрочке увеличивает сумму платежа на 10%.
 
-### Проверка scheduler
-
-Для теста можно вручную сделать ближайший платеж текущим:
+Для теста можно вручную сделать платеж текущим:
 
 ```bash
 psql -U postgres -d bank_service
@@ -460,98 +347,34 @@ WHERE id = 1;
 
 После перезапуска приложения scheduler обработает платеж примерно через 5 секунд.
 
-Проверка графика:
-```bash
-curl -s http://localhost:8080/credits/1/schedule \
-  -H "Authorization: Bearer $TOKEN"
-```
-
-Проверка истории операций:
-```bash
-curl -s http://localhost:8080/transactions \
-  -H "Authorization: Bearer $TOKEN"
-```
-
----
 ## Аналитика
 
-Все endpoints требуют JWT-токен:
-```http
-Authorization: Bearer <token>
-```
+### Доходы, расходы и кредитная нагрузка
 
-### Финансовая аналитика за месяц
-```http
-GET /analytics
-```
-
-По умолчанию возвращается аналитика за текущий месяц.
 ```bash
 curl -s http://localhost:8080/analytics \
   -H "Authorization: Bearer $TOKEN"
 ```
 
-Можно указать месяц явно:
+За конкретный месяц:
+
 ```bash
 curl -s "http://localhost:8080/analytics?month=2026-05" \
   -H "Authorization: Bearer $TOKEN"
 ```
 
-Пример ответа:
-```json
-{
-  "month": "2026-05",
-  "income": 1200,
-  "expenses": 2500,
-  "net": -1300,
-  "creditLoad": {
-    "activeCreditsCount": 1,
-    "totalMonthlyPayments": 9168,
-    "totalRemainingDebt": 92332
-  }
-}
-```
+### Прогноз баланса
 
-### Прогноз баланса счета
-
-```http
-GET /accounts/{accountId}/predict?days=N
-```
-
-Максимальный период прогноза - 365 дней.
 ```bash
 curl -s "http://localhost:8080/accounts/1/predict?days=30" \
   -H "Authorization: Bearer $TOKEN"
 ```
 
-Пример ответа:
-```json
-{
-  "accountId": 1,
-  "days": 30,
-  "currentBalance": 100000,
-  "plannedPayments": 9168,
-  "predictedBalance": 90832,
-  "message": "prediction includes planned and overdue credit payments only"
-}
-```
+Максимальный период прогноза — 365 дней.
 
-Прогноз учитывает текущий баланс и запланированные/просроченные кредитные платежи.
-
----
 ## Интеграция с ЦБ РФ
 
-Сервис получает ключевую ставку через SOAP API ЦБ РФ и добавляет банковскую маржу.
-
-Переменная окружения:
-```env
-BANK_RATE_MARGIN=5
-```
-
-Endpoint:
-```http
-GET /rates/key
-```
+Endpoint получает ключевую ставку через SOAP API ЦБ РФ и добавляет банковскую маржу.
 
 ```bash
 curl -s http://localhost:8080/rates/key \
@@ -559,6 +382,7 @@ curl -s http://localhost:8080/rates/key \
 ```
 
 Пример ответа:
+
 ```json
 {
   "centralBankRate": 16,
@@ -570,22 +394,17 @@ curl -s http://localhost:8080/rates/key \
 
 ## SMTP-уведомления
 
-SMTP-настройки задаются через переменные окружения:
+SMTP-настройки задаются через `.env`.
+
+Если:
+
 ```env
-SMTP_HOST=smtp.example.com
-SMTP_PORT=587
-SMTP_USER=noreply@example.com
-SMTP_PASSWORD=your_smtp_password
-SMTP_FROM=noreply@example.com
 SMTP_ENABLED=false
 ```
 
-Если `SMTP_ENABLED=false`, приложение не отправляет реальные письма, но код интеграции остается рабочим и безопасным для локальной проверки.
+приложение не отправляет реальные письма, но endpoint работает безопасно для локальной проверки.
 
-### Проверка SMTP endpoint
-```http
-POST /notifications/test-email
-```
+Тестовый запрос:
 
 ```bash
 curl -s -X POST http://localhost:8080/notifications/test-email \
@@ -595,10 +414,36 @@ curl -s -X POST http://localhost:8080/notifications/test-email \
 ```
 
 Пример ответа:
+
 ```json
 {
   "message": "test email processed successfully"
 }
 ```
 
-Scheduler кредитных платежей также использует SMTP-сервис для уведомлений о статусах `PAID` и `OVERDUE`, если `SMTP_ENABLED=true`.
+Если `SMTP_ENABLED=true`, scheduler также отправляет email-уведомления о кредитных платежах со статусами `PAID` и `OVERDUE`.
+
+## Безопасность
+
+В проекте реализовано:
+
+- bcrypt-хеширование паролей;
+- JWT-аутентификация;
+- JWT middleware;
+- добавление `userId` в context;
+- проверка владельца счетов, карт и кредитов;
+- bcrypt-хеширование CVV;
+- шифрование номера карты через `pgcrypto`;
+- шифрование срока действия карты через `pgcrypto`;
+- HMAC-SHA256 для проверки целостности номера карты;
+- параметризованные SQL-запросы;
+- транзакции БД для переводов и кредитных операций.
+
+## Финальная проверка проекта
+
+```bash
+go fmt ./...
+go mod tidy
+go test ./...
+go run ./cmd/bank-service
+```
