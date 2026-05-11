@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"math"
 	"time"
 
 	"github.com/evbgsl/bank-service-evbgsl/internal/models"
@@ -290,4 +291,246 @@ func (r *CreditRepository) FindScheduleByCreditIDAndUserID(
 	}
 
 	return schedule, nil
+}
+
+func (r *CreditRepository) ProcessDuePayments() (*models.PaymentProcessingResult, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	rows, err := r.db.QueryContext(
+		ctx,
+		`
+			SELECT ps.id
+			FROM payment_schedules ps
+			JOIN credits c ON c.id = ps.credit_id
+			WHERE ps.payment_date <= CURRENT_DATE
+			  AND ps.status IN ('PLANNED', 'OVERDUE')
+			  AND c.status = 'ACTIVE'
+			ORDER BY ps.payment_date, ps.id
+		`,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	scheduleIDs := make([]int64, 0)
+
+	for rows.Next() {
+		var scheduleID int64
+
+		if err := rows.Scan(&scheduleID); err != nil {
+			return nil, err
+		}
+
+		scheduleIDs = append(scheduleIDs, scheduleID)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	result := &models.PaymentProcessingResult{
+		Processed: len(scheduleIDs),
+	}
+
+	for _, scheduleID := range scheduleIDs {
+		status, err := r.processSingleDuePayment(ctx, scheduleID)
+		if err != nil {
+			result.Skipped++
+			continue
+		}
+
+		switch status {
+		case "PAID":
+			result.Paid++
+		case "OVERDUE":
+			result.Overdue++
+		default:
+			result.Skipped++
+		}
+	}
+
+	return result, nil
+}
+
+func (r *CreditRepository) processSingleDuePayment(ctx context.Context, scheduleID int64) (string, error) {
+	tx, err := r.db.BeginTx(ctx, &sql.TxOptions{
+		Isolation: sql.LevelReadCommitted,
+	})
+	if err != nil {
+		return "", err
+	}
+
+	defer func() {
+		_ = tx.Rollback()
+	}()
+
+	var payment struct {
+		ScheduleID    int64
+		CreditID      int64
+		UserID        int64
+		AccountID     int64
+		Amount        float64
+		PrincipalPart float64
+		Status        string
+		Balance       float64
+		Remaining     float64
+	}
+
+	err = tx.QueryRowContext(
+		ctx,
+		`
+			SELECT
+			    ps.id,
+			    ps.credit_id,
+			    c.user_id,
+			    c.account_id,
+			    ps.amount,
+			    ps.principal_part,
+			    ps.status,
+			    a.balance,
+			    c.remaining_amount
+			FROM payment_schedules ps
+			JOIN credits c ON c.id = ps.credit_id
+			JOIN accounts a ON a.id = c.account_id
+			WHERE ps.id = $1
+			  AND ps.payment_date <= CURRENT_DATE
+			  AND ps.status IN ('PLANNED', 'OVERDUE')
+			  AND c.status = 'ACTIVE'
+			FOR UPDATE OF ps, c, a
+		`,
+		scheduleID,
+	).Scan(
+		&payment.ScheduleID,
+		&payment.CreditID,
+		&payment.UserID,
+		&payment.AccountID,
+		&payment.Amount,
+		&payment.PrincipalPart,
+		&payment.Status,
+		&payment.Balance,
+		&payment.Remaining,
+	)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return "", nil
+		}
+
+		return "", err
+	}
+
+	if payment.Balance < payment.Amount {
+		if payment.Status == "PLANNED" {
+			penaltyAmount := roundMoneyRepository(payment.Amount * 1.10)
+
+			_, err = tx.ExecContext(
+				ctx,
+				`
+					UPDATE payment_schedules
+					SET amount = $1,
+					    status = 'OVERDUE'
+					WHERE id = $2
+				`,
+				penaltyAmount,
+				payment.ScheduleID,
+			)
+			if err != nil {
+				return "", err
+			}
+		}
+
+		if err := tx.Commit(); err != nil {
+			return "", err
+		}
+
+		return "OVERDUE", nil
+	}
+
+	newRemaining := roundMoneyRepository(payment.Remaining - payment.PrincipalPart)
+	if newRemaining < 0 {
+		newRemaining = 0
+	}
+
+	_, err = tx.ExecContext(
+		ctx,
+		`
+			UPDATE accounts
+			SET balance = balance - $1,
+			    updated_at = CURRENT_TIMESTAMP
+			WHERE id = $2
+		`,
+		payment.Amount,
+		payment.AccountID,
+	)
+	if err != nil {
+		return "", err
+	}
+
+	_, err = tx.ExecContext(
+		ctx,
+		`
+			UPDATE payment_schedules
+			SET status = 'PAID',
+			    paid_at = CURRENT_TIMESTAMP
+			WHERE id = $1
+		`,
+		payment.ScheduleID,
+	)
+	if err != nil {
+		return "", err
+	}
+
+	creditStatus := "ACTIVE"
+	if newRemaining == 0 {
+		creditStatus = "PAID"
+	}
+
+	_, err = tx.ExecContext(
+		ctx,
+		`
+			UPDATE credits
+			SET remaining_amount = $1,
+			    status = $2,
+			    updated_at = CURRENT_TIMESTAMP
+			WHERE id = $3
+		`,
+		newRemaining,
+		creditStatus,
+		payment.CreditID,
+	)
+	if err != nil {
+		return "", err
+	}
+
+	_, err = tx.ExecContext(
+		ctx,
+		`
+			INSERT INTO transactions (
+			    user_id,
+			    from_account_id,
+			    to_account_id,
+			    transaction_type,
+			    amount
+			)
+			VALUES ($1, $2, NULL, $3, $4)
+		`,
+		payment.UserID,
+		payment.AccountID,
+		"CREDIT_PAYMENT",
+		payment.Amount,
+	)
+	if err != nil {
+		return "", err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return "", err
+	}
+
+	return "PAID", nil
+}
+
+func roundMoneyRepository(value float64) float64 {
+	return math.Round(value*100) / 100
 }

@@ -8,6 +8,7 @@ import (
 	"github.com/evbgsl/bank-service-evbgsl/internal/handlers"
 	"github.com/evbgsl/bank-service-evbgsl/internal/middleware"
 	"github.com/evbgsl/bank-service-evbgsl/internal/repositories"
+	"github.com/evbgsl/bank-service-evbgsl/internal/scheduler"
 	"github.com/evbgsl/bank-service-evbgsl/internal/services"
 
 	"github.com/gorilla/mux"
@@ -56,6 +57,12 @@ func main() {
 	transactionHandler := handlers.NewTransactionHandler(transactionService)
 	cardHandler := handlers.NewCardHandler(cardService)
 	creditHandler := handlers.NewCreditHandler(creditService)
+
+	scheduler.StartPaymentScheduler(
+		creditService,
+		cfg.PaymentSchedulerIntervalHours,
+		log,
+	)
 
 	router := mux.NewRouter()
 

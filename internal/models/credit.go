@@ -47,3 +47,10 @@ type CreateCreditResponse struct {
 	Status          string  `json:"status"`
 	Message         string  `json:"message"`
 }
+
+type PaymentProcessingResult struct {
+	Processed int `json:"processed"`
+	Paid      int `json:"paid"`
+	Overdue   int `json:"overdue"`
+	Skipped   int `json:"skipped"`
+}
