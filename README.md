@@ -66,7 +66,6 @@ psql -U postgres
 
 ```sql
 CREATE DATABASE bank_service;
-\q
 ```
 
 Далее выполните SQL-файлы из папки `migrations` по порядку:
