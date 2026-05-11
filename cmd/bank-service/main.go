@@ -112,6 +112,7 @@ func main() {
 	authRouter.HandleFunc("/cards", cardHandler.CreateCard).Methods(http.MethodPost)
 	authRouter.HandleFunc("/cards", cardHandler.GetUserCards).Methods(http.MethodGet)
 	authRouter.HandleFunc("/cards/{cardId}", cardHandler.GetCardDetails).Methods(http.MethodGet)
+	authRouter.HandleFunc("/cards/{cardId}/pay", cardHandler.PayByCard).Methods(http.MethodPost)
 
 	authRouter.HandleFunc("/credits", creditHandler.CreateCredit).Methods(http.MethodPost)
 	authRouter.HandleFunc("/credits", creditHandler.GetUserCredits).Methods(http.MethodGet)

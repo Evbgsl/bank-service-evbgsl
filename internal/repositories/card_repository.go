@@ -1,8 +1,10 @@
 package repositories
 
 import (
+	"context"
 	"database/sql"
 	"errors"
+	"time"
 
 	"github.com/evbgsl/bank-service-evbgsl/internal/models"
 )
@@ -209,4 +211,119 @@ func (r *CardRepository) DecryptExpiry(cardID int64, userID int64, pgpKey string
 	}
 
 	return expiry, nil
+}
+
+func (r *CardRepository) PayByCard(userID int64, cardID int64, amount float64) (*models.CardPaymentResponse, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	tx, err := r.db.BeginTx(ctx, &sql.TxOptions{
+		Isolation: sql.LevelReadCommitted,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	defer func() {
+		_ = tx.Rollback()
+	}()
+
+	var card struct {
+		ID        int64
+		UserID    int64
+		AccountID int64
+		Status    string
+		Balance   float64
+	}
+
+	err = tx.QueryRowContext(
+		ctx,
+		`
+			SELECT
+			    c.id,
+			    c.user_id,
+			    c.account_id,
+			    c.status,
+			    a.balance
+			FROM cards c
+			JOIN accounts a ON a.id = c.account_id
+			WHERE c.id = $1 AND c.user_id = $2
+			FOR UPDATE OF c, a
+		`,
+		cardID,
+		userID,
+	).Scan(
+		&card.ID,
+		&card.UserID,
+		&card.AccountID,
+		&card.Status,
+		&card.Balance,
+	)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrCardNotFound
+		}
+
+		return nil, err
+	}
+
+	if card.Status != "ACTIVE" {
+		return nil, ErrCardNotFound
+	}
+
+	if card.Balance < amount {
+		return nil, ErrInsufficientFunds
+	}
+
+	var newBalance float64
+
+	err = tx.QueryRowContext(
+		ctx,
+		`
+			UPDATE accounts
+			SET balance = balance - $1,
+			    updated_at = CURRENT_TIMESTAMP
+			WHERE id = $2 AND user_id = $3
+			RETURNING balance
+		`,
+		amount,
+		card.AccountID,
+		userID,
+	).Scan(&newBalance)
+	if err != nil {
+		return nil, err
+	}
+
+	_, err = tx.ExecContext(
+		ctx,
+		`
+			INSERT INTO transactions (
+			    user_id,
+			    from_account_id,
+			    to_account_id,
+			    transaction_type,
+			    amount
+			)
+			VALUES ($1, $2, NULL, $3, $4)
+		`,
+		userID,
+		card.AccountID,
+		"CARD_PAYMENT",
+		amount,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+
+	return &models.CardPaymentResponse{
+		CardID:    card.ID,
+		AccountID: card.AccountID,
+		Amount:    amount,
+		Balance:   newBalance,
+		Message:   "card payment completed successfully",
+	}, nil
 }
