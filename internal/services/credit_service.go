@@ -15,17 +15,20 @@ var (
 )
 
 type CreditService struct {
-	creditRepo  *repositories.CreditRepository
-	accountRepo *repositories.AccountRepository
+	creditRepo   *repositories.CreditRepository
+	accountRepo  *repositories.AccountRepository
+	emailService *EmailService
 }
 
 func NewCreditService(
 	creditRepo *repositories.CreditRepository,
 	accountRepo *repositories.AccountRepository,
+	emailService *EmailService,
 ) *CreditService {
 	return &CreditService{
-		creditRepo:  creditRepo,
-		accountRepo: accountRepo,
+		creditRepo:   creditRepo,
+		accountRepo:  accountRepo,
+		emailService: emailService,
 	}
 }
 
@@ -124,7 +127,24 @@ func (s *CreditService) GetCreditSchedule(
 }
 
 func (s *CreditService) ProcessDuePayments() (*models.PaymentProcessingResult, error) {
-	return s.creditRepo.ProcessDuePayments()
+	result, err := s.creditRepo.ProcessDuePayments()
+	if err != nil {
+		return nil, err
+	}
+
+	if s.emailService == nil {
+		return result, nil
+	}
+
+	for _, notification := range result.Notifications {
+		_ = s.emailService.SendCreditPaymentEmail(
+			notification.UserEmail,
+			notification.Amount,
+			notification.Status,
+		)
+	}
+
+	return result, nil
 }
 
 func calculateAnnuityPayment(

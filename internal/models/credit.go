@@ -49,8 +49,15 @@ type CreateCreditResponse struct {
 }
 
 type PaymentProcessingResult struct {
-	Processed int `json:"processed"`
-	Paid      int `json:"paid"`
-	Overdue   int `json:"overdue"`
-	Skipped   int `json:"skipped"`
+	Processed     int                   `json:"processed"`
+	Paid          int                   `json:"paid"`
+	Overdue       int                   `json:"overdue"`
+	Skipped       int                   `json:"skipped"`
+	Notifications []PaymentNotification `json:"-"`
+}
+
+type PaymentNotification struct {
+	UserEmail string
+	Amount    float64
+	Status    string
 }

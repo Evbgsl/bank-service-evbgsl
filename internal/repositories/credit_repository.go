@@ -335,10 +335,14 @@ func (r *CreditRepository) ProcessDuePayments() (*models.PaymentProcessingResult
 	}
 
 	for _, scheduleID := range scheduleIDs {
-		status, err := r.processSingleDuePayment(ctx, scheduleID)
+		status, notification, err := r.processSingleDuePayment(ctx, scheduleID)
 		if err != nil {
 			result.Skipped++
 			continue
+		}
+
+		if notification != nil {
+			result.Notifications = append(result.Notifications, *notification)
 		}
 
 		switch status {
@@ -354,12 +358,15 @@ func (r *CreditRepository) ProcessDuePayments() (*models.PaymentProcessingResult
 	return result, nil
 }
 
-func (r *CreditRepository) processSingleDuePayment(ctx context.Context, scheduleID int64) (string, error) {
+func (r *CreditRepository) processSingleDuePayment(
+	ctx context.Context,
+	scheduleID int64,
+) (string, *models.PaymentNotification, error) {
 	tx, err := r.db.BeginTx(ctx, &sql.TxOptions{
 		Isolation: sql.LevelReadCommitted,
 	})
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
 
 	defer func() {
@@ -370,6 +377,7 @@ func (r *CreditRepository) processSingleDuePayment(ctx context.Context, schedule
 		ScheduleID    int64
 		CreditID      int64
 		UserID        int64
+		UserEmail     string
 		AccountID     int64
 		Amount        float64
 		PrincipalPart float64
@@ -385,6 +393,7 @@ func (r *CreditRepository) processSingleDuePayment(ctx context.Context, schedule
 			    ps.id,
 			    ps.credit_id,
 			    c.user_id,
+			    u.email,
 			    c.account_id,
 			    ps.amount,
 			    ps.principal_part,
@@ -394,6 +403,7 @@ func (r *CreditRepository) processSingleDuePayment(ctx context.Context, schedule
 			FROM payment_schedules ps
 			JOIN credits c ON c.id = ps.credit_id
 			JOIN accounts a ON a.id = c.account_id
+			JOIN users u ON u.id = c.user_id
 			WHERE ps.id = $1
 			  AND ps.payment_date <= CURRENT_DATE
 			  AND ps.status IN ('PLANNED', 'OVERDUE')
@@ -405,6 +415,7 @@ func (r *CreditRepository) processSingleDuePayment(ctx context.Context, schedule
 		&payment.ScheduleID,
 		&payment.CreditID,
 		&payment.UserID,
+		&payment.UserEmail,
 		&payment.AccountID,
 		&payment.Amount,
 		&payment.PrincipalPart,
@@ -414,10 +425,10 @@ func (r *CreditRepository) processSingleDuePayment(ctx context.Context, schedule
 	)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return "", nil
+			return "", nil, nil
 		}
 
-		return "", err
+		return "", nil, err
 	}
 
 	if payment.Balance < payment.Amount {
@@ -436,15 +447,23 @@ func (r *CreditRepository) processSingleDuePayment(ctx context.Context, schedule
 				payment.ScheduleID,
 			)
 			if err != nil {
-				return "", err
+				return "", nil, err
 			}
+
+			payment.Amount = penaltyAmount
 		}
 
 		if err := tx.Commit(); err != nil {
-			return "", err
+			return "", nil, err
 		}
 
-		return "OVERDUE", nil
+		notification := &models.PaymentNotification{
+			UserEmail: payment.UserEmail,
+			Amount:    payment.Amount,
+			Status:    "OVERDUE",
+		}
+
+		return "OVERDUE", notification, nil
 	}
 
 	newRemaining := roundMoneyRepository(payment.Remaining - payment.PrincipalPart)
@@ -464,7 +483,7 @@ func (r *CreditRepository) processSingleDuePayment(ctx context.Context, schedule
 		payment.AccountID,
 	)
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
 
 	_, err = tx.ExecContext(
@@ -478,7 +497,7 @@ func (r *CreditRepository) processSingleDuePayment(ctx context.Context, schedule
 		payment.ScheduleID,
 	)
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
 
 	creditStatus := "ACTIVE"
@@ -500,7 +519,7 @@ func (r *CreditRepository) processSingleDuePayment(ctx context.Context, schedule
 		payment.CreditID,
 	)
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
 
 	_, err = tx.ExecContext(
@@ -521,14 +540,20 @@ func (r *CreditRepository) processSingleDuePayment(ctx context.Context, schedule
 		payment.Amount,
 	)
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
 
 	if err := tx.Commit(); err != nil {
-		return "", err
+		return "", nil, err
 	}
 
-	return "PAID", nil
+	notification := &models.PaymentNotification{
+		UserEmail: payment.UserEmail,
+		Amount:    payment.Amount,
+		Status:    "PAID",
+	}
+
+	return "PAID", notification, nil
 }
 
 func roundMoneyRepository(value float64) float64 {
