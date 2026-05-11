@@ -1,55 +1,52 @@
-# Bank Service Go
+# Bank Service Go.
 REST API банковского сервиса на Go.
 
----
 ## Запуск
 ```bash
 go run ./cmd/bank-service
 ```
-
-## Проверка
+### Проверка
 ```bash
 curl http://localhost:8080/health
 ```
-Ответ:  `{"status":"ok"}`
+
+Ответ:
+```json
+{"status":"ok"}
+```
 
 ---
-
 ## Конфигурация
-
 Приложение использует переменные окружения.
-
 Пример файла конфигурации находится в `.env.example`.
-
 Для локального запуска можно создать файл `.env`:
 ```env
-APP_PORT=8080  
-  
-DB_HOST=localhost  
-DB_PORT=5432  
-DB_USER=postgres  
-DB_PASSWORD=your_postgres_password  
-DB_NAME=bank_service  
+
+APP_PORT=8080
+DB_HOST=localhost
+DB_PORT=5432
+DB_USER=postgres
+DB_PASSWORD=your_postgres_password
+DB_NAME=bank_service
 DB_SSLMODE=disable
 ```
 
 Подготовка базы данных:
-```SQL
+```sql
 CREATE DATABASE bank_service;
 ```
 
 Проверка подключения к БД:
 ```bash
-curl.exe http://localhost:8080/health/db
+curl http://localhost:8080/health/db
 ```
 
 Ожидаемый ответ:
-```JSON
+```json
 {"status":"ok","database":"available"}
 ```
 
 ---
-
 ## Регистрация пользователя
 
 Endpoint:
@@ -57,18 +54,20 @@ Endpoint:
 POST /register
 ```
 
-Пример запроса PowerShell:
-```powershell
-curl.exe -X POST http://localhost:8080/register -H "Content-Type: application/json" -d '{\"username\":\"user1\",\"email\":\"user1@example.com\",\"password\":\"user123\"}'
+Пример запроса:
+```bash
+curl -X POST http://localhost:8080/register \
+ -H "Content-Type: application/json" \
+ -d '{"username":"user1","email":"user1@example.com","password":"user123"}'
 ```
 
 Пример успешного ответа:
 ```json
 {
-  "id": 1,
-  "username": "user1",
-  "email": "user1@example.com",
-  "message": "user registered successfully"
+ "id": 1,
+ "username": "user1",
+ "email": "user1@example.com",
+ "message": "user registered successfully"
 }
 ```
 
@@ -77,34 +76,33 @@ curl.exe -X POST http://localhost:8080/register -H "Content-Type: application/js
 Пример ошибки:
 ```json
 {
-  "message": "user with this email or username already exists"
+ "message": "user with this email or username already exists"
 }
 ```
 
 ---
 ## Аутентификация
-
 ### Login
-
 Endpoint:
 ```http
 POST /login
 ```
 
-Пример запроса PowerShell:
-```powershell
-curl.exe -X POST http://localhost:8080/login -H "Content-Type: application/json" -d '{\"email\":\"user1@example.com\",\"password\":\"user123\"}'
+Пример запроса:
+```bash
+curl -X POST http://localhost:8080/login \
+ -H "Content-Type: application/json" \
+ -d '{"email":"user1@example.com","password":"user123"}'
 ```
 
 Пример ответа:
 ```json
 {
-  "token": "eyJ...",
-  "tokenType": "Bearer",
-  "expiresInSeconds": 86400
+ "token": "eyJ...",
+ "tokenType": "Bearer",
+ "expiresInSeconds": 86400
 }
 ```
-
 ### Защищенный endpoint
 
 Endpoint:
@@ -115,22 +113,26 @@ GET /me
 Запрос без токена вернет ошибку:
 ```json
 {
-  "message": "authorization header required"
+ "message": "authorization header required"
 }
 ```
 
 Пример запроса с токеном:
-```powershell
-$response = curl.exe -X POST http://localhost:8080/login -H "Content-Type: application/json" -d '{\"email\":\"user1@example.com\",\"password\":\"user123\"}' | ConvertFrom-Json
-$token = $response.token
-
-curl.exe http://localhost:8080/me -H "Authorization: Bearer $token"
+```bash
+TOKEN=$(curl -s -X POST http://localhost:8080/login \
+ -H "Content-Type: application/json" \
+ -d '{"email":"user1@example.com","password":"user123"}' \
+ | grep -o '"token":"[^"]*' \
+ | cut -d'"' -f4)
+curl http://localhost:8080/me \
+ -H "Authorization: Bearer $TOKEN"
 ```
 
 Пример ответа:
 ```json
+
 {
-  "userId": 1
+ "userId": 1
 }
 ```
 
@@ -143,60 +145,64 @@ Authorization: Bearer <token>
 ```
 
 ### Создание счета
+
+Endpoint:
 ```http
 POST /accounts
 ```
 
-Пример PowerShell:
-```powershell
-curl.exe -X POST http://localhost:8080/accounts `
-  -H "Content-Type: application/json" `
-  -H "Authorization: Bearer $token" `
-  -d '{\"currency\":\"RUB\"}'
+Пример:
+```bash
+curl -X POST http://localhost:8080/accounts \
+ -H "Content-Type: application/json" \
+ -H "Authorization: Bearer $TOKEN" \
+ -d '{"currency":"RUB"}'
 ```
 
 Пример ответа:
 ```json
 {
-  "id": 1,
-  "accountNumber": "40817810123456789012",
-  "balance": 0,
-  "currency": "RUB",
-  "message": "account created successfully"
+ "id": 1,
+ "accountNumber": "40817810123456789012",
+ "balance": 0,
+ "currency": "RUB",
+ "message": "account created successfully"
 }
 ```
-
 ### Получение своих счетов
+Endpoint:
 ```http
 GET /accounts
 ```
 
 Пример:
-```powershell
-curl.exe http://localhost:8080/accounts -H "Authorization: Bearer $token"
+```bash
+curl http://localhost:8080/accounts \
+ -H "Authorization: Bearer $TOKEN"
 ```
-
 ### Пополнение счета
+Endpoint:
 ```http
 POST /accounts/{accountId}/deposit
 ```
 
 Пример:
-```powershell
-curl.exe -X POST http://localhost:8080/accounts/1/deposit `
-  -H "Content-Type: application/json" `
-  -H "Authorization: Bearer $token" `
-  -d '{\"amount\":1500.50}'
+```bash
+curl -X POST http://localhost:8080/accounts/1/deposit \
+ -H "Content-Type: application/json" \
+ -H "Authorization: Bearer $TOKEN" \
+ -d '{"amount":1500.50}'
 ```
 
 Пример ответа:
 ```json
 {
-  "accountId": 1,
-  "balance": 1500.5,
-  "message": "account deposited successfully"
+ "accountId": 1,
+ "balance": 1500.5,
+ "message": "account deposited successfully"
 }
 ```
+
 ---
 ## Переводы и история операций
 
@@ -204,7 +210,6 @@ curl.exe -X POST http://localhost:8080/accounts/1/deposit `
 ```http
 Authorization: Bearer <token>
 ```
-
 ### Перевод между счетами
 
 Endpoint:
@@ -212,26 +217,26 @@ Endpoint:
 POST /transfer
 ```
 
-Пример PowerShell:
-```powershell
-curl.exe -X POST http://localhost:8080/transfer `
-  -H "Content-Type: application/json" `
-  -H "Authorization: Bearer $token" `
-  -d '{\"fromAccountId\":1,\"toAccountId\":2,\"amount\":1200}'
+Пример:
+```bash
+
+curl -X POST http://localhost:8080/transfer \
+ -H "Content-Type: application/json" \
+ -H "Authorization: Bearer $TOKEN" \
+ -d '{"fromAccountId":1,"toAccountId":2,"amount":1200}'
 ```
 
 Пример ответа:
 ```json
 {
-  "transactionId": 1,
-  "fromAccountId": 1,
-  "toAccountId": 2,
-  "amount": 1200,
-  "fromBalance": 3800,
-  "message": "transfer completed successfully"
+ "transactionId": 1,
+ "fromAccountId": 1,
+ "toAccountId": 2,
+ "amount": 1200,
+ "fromBalance": 3800,
+ "message": "transfer completed successfully"
 }
 ```
-
 ### История операций
 
 Endpoint:
@@ -240,22 +245,91 @@ GET /transactions
 ```
 
 Пример:
-```powershell
-curl.exe http://localhost:8080/transactions -H "Authorization: Bearer $token"
+```bash
+curl http://localhost:8080/transactions \
+ -H "Authorization: Bearer $TOKEN"
 ```
 
 Пример ответа:
 ```json
 [
-  {
-    "id": 1,
-    "userId": 1,
-    "fromAccountId": 1,
-    "toAccountId": 2,
-    "transactionType": "TRANSFER",
-    "amount": 1200,
-    "createdAt": "2026-05-06T12:00:00Z"
-  }
+ {
+  "id": 1,
+  "userId": 1,
+  "fromAccountId": 1,
+  "toAccountId": 2,
+  "transactionType": "TRANSFER",
+  "amount": 1200,
+  "createdAt": "2026-05-06T12:00:00Z"
+ }
 ]
 ```
 
+---
+## Карты
+
+Все endpoints требуют JWT-токен:
+```http
+Authorization: Bearer <token>
+```
+
+### Выпуск виртуальной карты
+
+Endpoint:
+```http
+POST /cards
+```
+
+Пример:
+```bash
+curl -X POST http://localhost:8080/cards \
+ -H "Content-Type: application/json" \
+ -H "Authorization: Bearer $TOKEN" \
+ -d '{"accountId":1}'
+```
+
+Пример ответа:
+```json
+
+{
+ "id": 1,
+ "accountId": 1,
+ "cardNumber": "2202123456789012",
+ "maskedNumber": "220212******9012",
+ "expiryMonth": 5,
+ "expiryYear": 2029,
+ "cvv": "123",
+ "message": "card created successfully. Save card number and CVV now; CVV will not be shown again."
+}
+```
+
+Полный номер карты и CVV возвращаются только при выпуске карты.
+### Получение списка карт
+
+Endpoint:
+```http
+GET /cards
+```
+
+Пример:
+```bash
+curl http://localhost:8080/cards \
+ -H "Authorization: Bearer $TOKEN"
+```
+
+Пример ответа:
+```json
+[
+ {
+  "id": 1,
+  "userId": 1,
+  "accountId": 1,
+  "maskedNumber": "220212******9012",
+  "expiryMonth": 5,
+  "expiryYear": 2029,
+  "status": "ACTIVE",
+  "createdAt": "2026-05-06T12:00:00Z",
+  "updatedAt": "2026-05-06T12:00:00Z"
+ }
+]
+```

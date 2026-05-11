@@ -34,14 +34,17 @@ func main() {
 	userRepository := repositories.NewUserRepository(database)
 	accountRepository := repositories.NewAccountRepository(database)
 	transactionRepository := repositories.NewTransactionRepository(database)
+	cardRepository := repositories.NewCardRepository(database)
 
 	authService := services.NewAuthService(userRepository, cfg.JWTSecret)
 	accountService := services.NewAccountService(accountRepository)
 	transactionService := services.NewTransactionService(transactionRepository)
+	cardService := services.NewCardService(cardRepository, accountRepository)
 
 	authHandler := handlers.NewAuthHandler(authService)
 	accountHandler := handlers.NewAccountHandler(accountService)
 	transactionHandler := handlers.NewTransactionHandler(transactionService)
+	cardHandler := handlers.NewCardHandler(cardService)
 
 	router := mux.NewRouter()
 
@@ -78,6 +81,9 @@ func main() {
 
 	authRouter.HandleFunc("/transfer", transactionHandler.Transfer).Methods(http.MethodPost)
 	authRouter.HandleFunc("/transactions", transactionHandler.GetUserTransactions).Methods(http.MethodGet)
+
+	authRouter.HandleFunc("/cards", cardHandler.CreateCard).Methods(http.MethodPost)
+	authRouter.HandleFunc("/cards", cardHandler.GetUserCards).Methods(http.MethodGet)
 
 	serverAddr := ":" + cfg.AppPort
 
