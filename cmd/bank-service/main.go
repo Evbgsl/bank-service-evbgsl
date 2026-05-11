@@ -39,6 +39,9 @@ func main() {
 	creditRepository := repositories.NewCreditRepository(database)
 	analyticsRepository := repositories.NewAnalyticsRepository(database)
 
+	emailService := services.NewEmailService(cfg.SMTP)
+	cbrService := services.NewCBRService(cfg.BankRateMargin)
+
 	authService := services.NewAuthService(userRepository, cfg.JWTSecret)
 	accountService := services.NewAccountService(accountRepository)
 	transactionService := services.NewTransactionService(transactionRepository)
@@ -51,6 +54,7 @@ func main() {
 	creditService := services.NewCreditService(
 		creditRepository,
 		accountRepository,
+		emailService,
 	)
 	analyticsService := services.NewAnalyticsService(analyticsRepository)
 
@@ -60,6 +64,7 @@ func main() {
 	cardHandler := handlers.NewCardHandler(cardService)
 	creditHandler := handlers.NewCreditHandler(creditService)
 	analyticsHandler := handlers.NewAnalyticsHandler(analyticsService)
+	integrationHandler := handlers.NewIntegrationHandler(cbrService, emailService)
 
 	scheduler.StartPaymentScheduler(
 		creditService,
@@ -113,6 +118,9 @@ func main() {
 	authRouter.HandleFunc("/credits/{creditId}/schedule", creditHandler.GetCreditSchedule).Methods(http.MethodGet)
 
 	authRouter.HandleFunc("/analytics", analyticsHandler.GetMonthlyAnalytics).Methods(http.MethodGet)
+
+	authRouter.HandleFunc("/rates/key", integrationHandler.GetKeyRate).Methods(http.MethodGet)
+	authRouter.HandleFunc("/notifications/test-email", integrationHandler.SendTestEmail).Methods(http.MethodPost)
 
 	serverAddr := ":" + cfg.AppPort
 

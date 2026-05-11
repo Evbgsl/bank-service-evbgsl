@@ -537,3 +537,68 @@ curl -s "http://localhost:8080/accounts/1/predict?days=30" \
 ```
 
 Прогноз учитывает текущий баланс и запланированные/просроченные кредитные платежи.
+
+---
+## Интеграция с ЦБ РФ
+
+Сервис получает ключевую ставку через SOAP API ЦБ РФ и добавляет банковскую маржу.
+
+Переменная окружения:
+```env
+BANK_RATE_MARGIN=5
+```
+
+Endpoint:
+```http
+GET /rates/key
+```
+
+```bash
+curl -s http://localhost:8080/rates/key \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+Пример ответа:
+```json
+{
+  "centralBankRate": 16,
+  "bankMargin": 5,
+  "finalRate": 21,
+  "message": "key rate received from Central Bank of Russia SOAP service"
+}
+```
+
+## SMTP-уведомления
+
+SMTP-настройки задаются через переменные окружения:
+```env
+SMTP_HOST=smtp.example.com
+SMTP_PORT=587
+SMTP_USER=noreply@example.com
+SMTP_PASSWORD=your_smtp_password
+SMTP_FROM=noreply@example.com
+SMTP_ENABLED=false
+```
+
+Если `SMTP_ENABLED=false`, приложение не отправляет реальные письма, но код интеграции остается рабочим и безопасным для локальной проверки.
+
+### Проверка SMTP endpoint
+```http
+POST /notifications/test-email
+```
+
+```bash
+curl -s -X POST http://localhost:8080/notifications/test-email \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{"to":"user1@example.com"}'
+```
+
+Пример ответа:
+```json
+{
+  "message": "test email processed successfully"
+}
+```
+
+Scheduler кредитных платежей также использует SMTP-сервис для уведомлений о статусах `PAID` и `OVERDUE`, если `SMTP_ENABLED=true`.

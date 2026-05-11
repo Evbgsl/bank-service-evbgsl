@@ -20,6 +20,7 @@ var (
 	ErrInvalidRegisterData = errors.New("invalid register data")
 	ErrUserAlreadyExists   = errors.New("user with this email or username already exists")
 	ErrInvalidCredentials  = errors.New("invalid email or password")
+	ErrInvalidEmail        = errors.New("invalid email")
 )
 
 type AuthService struct {
