@@ -32,8 +32,13 @@ func main() {
 	log.Info("database connection established")
 
 	userRepository := repositories.NewUserRepository(database)
+	accountRepository := repositories.NewAccountRepository(database)
+
 	authService := services.NewAuthService(userRepository, cfg.JWTSecret)
+	accountService := services.NewAccountService(accountRepository)
+
 	authHandler := handlers.NewAuthHandler(authService)
+	accountHandler := handlers.NewAccountHandler(accountService)
 
 	router := mux.NewRouter()
 
@@ -61,7 +66,12 @@ func main() {
 
 	authRouter := router.PathPrefix("/").Subrouter()
 	authRouter.Use(middleware.AuthMiddleware(cfg.JWTSecret))
+
 	authRouter.HandleFunc("/me", authHandler.Me).Methods(http.MethodGet)
+
+	authRouter.HandleFunc("/accounts", accountHandler.CreateAccount).Methods(http.MethodPost)
+	authRouter.HandleFunc("/accounts", accountHandler.GetUserAccounts).Methods(http.MethodGet)
+	authRouter.HandleFunc("/accounts/{accountId}/deposit", accountHandler.Deposit).Methods(http.MethodPost)
 
 	serverAddr := ":" + cfg.AppPort
 

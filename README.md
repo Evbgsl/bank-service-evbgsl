@@ -133,3 +133,68 @@ curl.exe http://localhost:8080/me -H "Authorization: Bearer $token"
   "userId": 1
 }
 ```
+
+---
+## Счета
+
+Все endpoints ниже требуют JWT-токен в заголовке:
+```http
+Authorization: Bearer <token>
+```
+
+### Создание счета
+```http
+POST /accounts
+```
+
+Пример PowerShell:
+```powershell
+curl.exe -X POST http://localhost:8080/accounts `
+  -H "Content-Type: application/json" `
+  -H "Authorization: Bearer $token" `
+  -d '{\"currency\":\"RUB\"}'
+```
+
+Пример ответа:
+```json
+{
+  "id": 1,
+  "accountNumber": "40817810123456789012",
+  "balance": 0,
+  "currency": "RUB",
+  "message": "account created successfully"
+}
+```
+
+### Получение своих счетов
+```http
+GET /accounts
+```
+
+Пример:
+```powershell
+curl.exe http://localhost:8080/accounts -H "Authorization: Bearer $token"
+```
+
+### Пополнение счета
+```http
+POST /accounts/{accountId}/deposit
+```
+
+Пример:
+```powershell
+curl.exe -X POST http://localhost:8080/accounts/1/deposit `
+  -H "Content-Type: application/json" `
+  -H "Authorization: Bearer $token" `
+  -d '{\"amount\":1500.50}'
+```
+
+Пример ответа:
+```json
+{
+  "accountId": 1,
+  "balance": 1500.5,
+  "message": "account deposited successfully"
+}
+```
+
