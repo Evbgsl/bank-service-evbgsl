@@ -349,3 +349,78 @@ CVV не возвращается повторно.
 - CVV хранится только как bcrypt-хеш;
 - HMAC-SHA256 используется для проверки целостности номера карты;
 - доступ к карте проверяется через JWT и `userId` владельца.
+
+---
+
+## Кредиты
+
+Все endpoints требуют JWT-токен:
+```http
+Authorization: Bearer <token>
+```
+
+### Оформление кредита
+```http
+POST /credits
+```
+
+```bash
+curl -s -X POST http://localhost:8080/credits \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{"accountId":1,"principalAmount":100000,"interestRate":18,"termMonths":12}'
+```
+
+Пример ответа:
+```json
+{
+  "id": 1,
+  "accountId": 1,
+  "principalAmount": 100000,
+  "interestRate": 18,
+  "termMonths": 12,
+  "monthlyPayment": 9168,
+  "remainingAmount": 100000,
+  "status": "ACTIVE",
+  "message": "credit created successfully"
+}
+```
+
+При оформлении кредита сумма кредита зачисляется на выбранный счет пользователя.
+
+### Получение списка кредитов
+```http
+GET /credits
+```
+
+```bash
+curl -s http://localhost:8080/credits \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+### Получение графика платежей
+```http
+GET /credits/{creditId}/schedule
+```
+
+```bash
+curl -s http://localhost:8080/credits/1/schedule \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+Пример ответа:
+```json
+[
+  {
+    "id": 1,
+    "creditId": 1,
+    "paymentNumber": 1,
+    "paymentDate": "2026-06-11T00:00:00Z",
+    "amount": 9168,
+    "principalPart": 7668,
+    "interestPart": 1500,
+    "status": "PLANNED",
+    "createdAt": "2026-05-11T12:00:00Z"
+  }
+]
+```

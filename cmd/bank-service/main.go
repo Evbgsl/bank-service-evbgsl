@@ -35,6 +35,7 @@ func main() {
 	accountRepository := repositories.NewAccountRepository(database)
 	transactionRepository := repositories.NewTransactionRepository(database)
 	cardRepository := repositories.NewCardRepository(database)
+	creditRepository := repositories.NewCreditRepository(database)
 
 	authService := services.NewAuthService(userRepository, cfg.JWTSecret)
 	accountService := services.NewAccountService(accountRepository)
@@ -45,11 +46,16 @@ func main() {
 		cfg.CardPGPKey,
 		cfg.CardHMACSecret,
 	)
+	creditService := services.NewCreditService(
+		creditRepository,
+		accountRepository,
+	)
 
 	authHandler := handlers.NewAuthHandler(authService)
 	accountHandler := handlers.NewAccountHandler(accountService)
 	transactionHandler := handlers.NewTransactionHandler(transactionService)
 	cardHandler := handlers.NewCardHandler(cardService)
+	creditHandler := handlers.NewCreditHandler(creditService)
 
 	router := mux.NewRouter()
 
@@ -90,6 +96,10 @@ func main() {
 	authRouter.HandleFunc("/cards", cardHandler.CreateCard).Methods(http.MethodPost)
 	authRouter.HandleFunc("/cards", cardHandler.GetUserCards).Methods(http.MethodGet)
 	authRouter.HandleFunc("/cards/{cardId}", cardHandler.GetCardDetails).Methods(http.MethodGet)
+
+	authRouter.HandleFunc("/credits", creditHandler.CreateCredit).Methods(http.MethodPost)
+	authRouter.HandleFunc("/credits", creditHandler.GetUserCredits).Methods(http.MethodGet)
+	authRouter.HandleFunc("/credits/{creditId}/schedule", creditHandler.GetCreditSchedule).Methods(http.MethodGet)
 
 	serverAddr := ":" + cfg.AppPort
 
